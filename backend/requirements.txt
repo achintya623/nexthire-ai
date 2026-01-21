@@ -1,0 +1,8 @@
+flask
+flask-cors
+spacy
+sentence-transformers
+rapidfuzz
+numpy
+torch
+gunicorn
