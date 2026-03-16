@@ -1,12 +1,17 @@
-# Python
-.venv/
-__pycache__/
-*.pyc
-
 # Node
-node_modules/
-dist/
+node_modules
+dist
+build
+
+# Python
+venv
+__pycache__
+*.pyc
+.venv
+
+# Environment variables
+.env
 
 # OS
 .DS_Store
-.env
+Thumbs.db

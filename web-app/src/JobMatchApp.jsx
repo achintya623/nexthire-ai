@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
+import "./index.css";
 import {
   FileText,
   Upload,
@@ -7,14 +8,17 @@ import {
   LayoutList,
   CheckCircle,
   AlertTriangle,
-  X,
 } from "lucide-react";
-import axios from "axios";
+import api from "./api";
 const pdfjsLib = await import("pdfjs-dist/build/pdf");
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js";
+import LoginPage from "./LoginPage";
+import RegisterPage from "./RegisterPage";
 
-const API_BASE_URL = "https://nexthire-ai-1zdq.onrender.com";
+// const API_BASE_URL = "https://nexthire-ai-1zdq.onrender.com";
+// const API_BASE_URL = "http://127.0.0.1:8000";
+// const API_BASE_URL = "http://localhost:5000/api";
 
 const Button = ({
   children,
@@ -125,7 +129,18 @@ const JobDescriptionPage = ({
             <Button
               variant="primary"
               icon={CheckCircle}
-              onClick={() => setCurrentPage("cvs")}
+              onClick={async () => {
+                try {
+                  const res = await api.post("/jobs", jobDescription);
+                  setJobDescription((prev) => ({
+                    ...prev,
+                    id: res.data.id,
+                  }));
+                  setCurrentPage("cvs");
+                } catch (err) {
+                  console.error("Failed to create job", err);
+                }
+              }}
               disabled={!jobDescription.title || !jobDescription.description}
             >
               Description Ready{" "}
@@ -144,6 +159,7 @@ const CVUploadPage = ({ files, setFiles, jobDescription, setCurrentPage }) => {
   const handleFileUpload = useCallback(
     (e) => {
       const uploadedFiles = Array.from(e.target.files);
+      e.target.value = null;
       const newFiles = uploadedFiles.map((file) => ({
         id: crypto.randomUUID(),
         name: file.name,
@@ -212,9 +228,6 @@ const CVUploadPage = ({ files, setFiles, jobDescription, setCurrentPage }) => {
           f.id === fileObj.id ? { ...f, status: "Parsing resume..." } : f,
         ),
       );
-      const parsedRes = await axios.post(`${API_BASE_URL}/parse_resume`, {
-        text,
-      });
 
       // Step 2: Send parsed text + JD to /match
       // Step 2: Send parsed resume + JD to /match (BERT model)
@@ -225,74 +238,48 @@ const CVUploadPage = ({ files, setFiles, jobDescription, setCurrentPage }) => {
             : f,
         ),
       );
-      const matchRes = await axios.post(`${API_BASE_URL}/match`, {
+      // Step 1 — Create candidate in DB
+      const candidateRes = await api.post("/candidates", {
+        job_id: jobDescription.id, // for now assume single job
+        name: fileObj.name,
+        email: "",
         resume_text: text,
-        jd_text: jobDescription.description,
       });
 
-      const parsedResume = matchRes.data?.parsed_resume || {};
-      const parsedJD = matchRes.data?.parsed_jd || {};
-      const match = matchRes.data?.match || {};
+      const candidateId = candidateRes.data.id;
+
+      // Step 2 — Run AI analysis
+      const analysisRes = await api.post(`/candidates/${candidateId}/analyze`);
+
+      const report = analysisRes.data;
+
+      const bias = report.bias || {};
 
       // hybrid score (0–1)
-      const hybridScore = Number(match.domain_match_score || 0);
+      const hybridScore = Number(report.screening?.match?.final_score ?? 0);
 
       // skills overlap
-      const rSkills = new Set(
-        (parsedResume.skills || []).map((s) => s.toLowerCase()),
-      );
-      const jSkills = new Set(
-        (parsedJD.required_skills || []).map((s) => s.toLowerCase()),
-      );
-      const matchedSkills = [...rSkills]
-        .filter((s) => jSkills.has(s))
-        .map((s) => s[0].toUpperCase() + s.slice(1));
-      const missingSkills = [...jSkills]
-        .filter((s) => !rSkills.has(s))
-        .map((s) => s[0].toUpperCase() + s.slice(1));
+      const matchedSkills = report.positive_signals || [];
+
+      const missingSkills = report.readiness_checklist?.gaps || [];
 
       // experience match (A + C)
-      const ry = toInt(parsedResume.experience_years);
-      const jy = toInt(parsedJD.required_years);
-      let expMatch = "Unknown";
-      if (ry != null && jy != null) {
-        expMatch = ry >= jy ? "Meets/Exceeds" : "Below";
-      }
+      const expMatch =
+        report.experience_analysis?.candidate_years >=
+        report.experience_analysis?.required_years
+          ? "Meets/Exceeds"
+          : "Below";
 
       // role match (D)
-      const roleMatch = match.roles_boost_applied
-        ? "Likely aligned"
-        : "Unclear";
-      const topRoles = (parsedResume.roles || []).slice(0, 3);
-
-      // candidate info (E)
-      const contact = parsedResume.candidate_info || {};
-
-      // parsed sections (G)
-      const sections = parsedResume.sections || {};
+      const roleMatch =
+        report.skill_analysis?.required_matched > 0
+          ? "Partially aligned"
+          : "Unclear";
 
       // short reasoning (Detail level 2)
       const pct = Math.round(hybridScore * 100);
-      const reasoning = [
-        `Score ${pct}% from hybrid similarity.`,
-        matchedSkills.length
-          ? `Matched skills: ${matchedSkills.slice(0, 8).join(", ")}`
-          : `Few direct skill matches.`,
-        missingSkills.length
-          ? `Missing skills: ${missingSkills.slice(0, 8).join(", ")}`
-          : `No major skills missing.`,
-        `Experience: ${expMatch}${
-          ry != null
-            ? ` (candidate ${ry} yrs${jy != null ? ` vs req ${jy} yrs` : ""})`
-            : ""
-        }.`,
-        `Role alignment: ${roleMatch}${
-          topRoles.length ? ` (e.g., ${topRoles.join(", ")})` : ""
-        }.`,
-      ].join(" ");
 
-      // ✅ new scoring JSON format
-      const relevanceScore = matchRes.data.match?.domain_match_score ?? 0;
+      const reasoning = `Score ${pct}% based on semantic similarity, skill overlap, role alignment, and seniority match.`;
 
       // Step 3: Send results to /bias_check (optional bias model)
       setFiles((prev) =>
@@ -314,27 +301,30 @@ const CVUploadPage = ({ files, setFiles, jobDescription, setCurrentPage }) => {
 
       // Step 4: Update UI
       // Default fallback reasoning if required fields missing
-      const fallbackReasoning = `Candidate scored ${pct}% relevance based on semantic similarity to the job description. More detailed insights unavailable due to limited structured information in the resume.`;
 
       // ✅ Ensure insights always exist — never undefined
+      const contact = {};
+      const sections = {};
       setFiles((prev) =>
         prev.map((f) =>
           f.id === fileObj.id
             ? {
                 ...f,
+                rawText: text, // ✅ ADD THIS
+                candidateId: candidateId,
                 status: "Done",
                 isAnalyzed: true,
                 score: hybridScore,
+                bias: bias,
                 insights: {
-                  matchedSkills: matchedSkills || [],
-                  missingSkills: missingSkills || [],
-                  expMatch: expMatch || "Unknown",
-                  roleMatch: roleMatch || "Unknown",
-                  contact: contact || {},
-                  sections: sections || {},
-                  reasoning: reasoning || fallbackReasoning, // ✅ guaranteed explanation
-                  embeddingCosine: match.embedding_cosine ?? 0,
-                  skillJaccard: match.skill_overlap_jaccard ?? 0,
+                  matchedSkills,
+                  missingSkills,
+                  expMatch,
+                  roleMatch,
+                  contact,
+                  sections,
+                  reasoning,
+                  confidence: report.ai_confidence_meter?.score_percent ?? null,
                 },
               }
             : f,
@@ -513,14 +503,102 @@ const CVUploadPage = ({ files, setFiles, jobDescription, setCurrentPage }) => {
   );
 };
 
-const DashboardPage = ({ files }) => {
-  const analyzed = useMemo(
-    () =>
-      [...files]
-        .filter((f) => f.isAnalyzed)
-        .sort((a, b) => (b.score || 0) - (a.score || 0)),
-    [files],
-  );
+const DashboardPage = ({
+  files,
+  setSelectedResume,
+  setCurrentPage,
+  jobDescription,
+}) => {
+  const [candidates, setCandidates] = useState([]);
+  const analyzed = useMemo(() => {
+    return candidates.map((c) => {
+      const report = c.report_json || {};
+      const screening = report.screening || {};
+      const interview = report.interview || {};
+      const match = screening.match || {};
+
+      return {
+        id: c.id,
+        name: c.name,
+        score: (c.ai_score || 0) / 100,
+        candidateId: c.id,
+        stage: c.stage,
+
+        insights: {
+          reasoning: interview.interview_summary || c.recommendation,
+
+          matchedSkills: match.matched_required_skills || [],
+
+          missingSkills: match.missing_required_skills || [],
+
+          expMatch:
+            interview.experience_analysis?.candidate_years >=
+            interview.experience_analysis?.required_years
+              ? "Meets/Exceeds"
+              : "Below",
+
+          roleMatch: match.final_score >= 0.7 ? "Aligned" : "Weak",
+
+          sections: screening.parsed_resume?.sections || {},
+        },
+      };
+    });
+  }, [candidates]);
+
+  const stats = useMemo(() => {
+    if (!candidates.length) return { avg: 0, shortlisted: 0 };
+
+    const avg =
+      candidates.reduce((sum, c) => sum + (c.ai_score || 0), 0) /
+      candidates.length;
+
+    const shortlisted = candidates.filter(
+      (c) => c.stage === "Shortlisted",
+    ).length;
+
+    return {
+      avg: Math.round(avg),
+      shortlisted,
+    };
+  }, [candidates]);
+
+  useEffect(() => {
+    const loadCandidates = async () => {
+      try {
+        const res = await api.get(`/candidates/job/${jobDescription.id}`);
+        setCandidates(res.data);
+      } catch (err) {
+        console.error("Failed to load candidates", err);
+      }
+    };
+
+    if (jobDescription?.id) {
+      loadCandidates();
+    }
+  }, [jobDescription?.id]);
+
+  const stages = [
+    "Applied",
+    "Shortlisted",
+    "Interview",
+    "Offer",
+    "Hired",
+    "Rejected",
+  ];
+
+  const updateStage = async (candidateId, newStage) => {
+    try {
+      await api.patch(`/candidates/${candidateId}/stage`, {
+        stage: newStage,
+      });
+
+      setCandidates((prev) =>
+        prev.map((c) => (c.id === candidateId ? { ...c, stage: newStage } : c)),
+      );
+    } catch (err) {
+      console.error("Failed to update stage", err);
+    }
+  };
 
   if (analyzed.length === 0) {
     return (
@@ -539,14 +617,33 @@ const DashboardPage = ({ files }) => {
     <div className="page-wrapper">
       <div className="content-card">
         <h2 className="content-card-title">Dashboard</h2>
+        <h2 className="content-card-title-2">
+          {jobDescription.title} — Candidates
+        </h2>
+
+        <div className="dashboard-stats">
+          <div className="stat-card">
+            <strong>{candidates.length}</strong>
+            <span>Candidates</span>
+          </div>
+
+          <div className="stat-card">
+            <strong>{stats.avg}%</strong>
+            <span>Avg Score</span>
+          </div>
+
+          <div className="stat-card">
+            <strong>{stats.shortlisted}</strong>
+            <span>Shortlisted</span>
+          </div>
+        </div>
 
         <ul className="dash-list">
           {analyzed.map((f, idx) => {
             const p = toPct(f.score);
-            const c = f.insights?.contact || {};
-            const head = c.name && c.name !== "N/A" ? c.name : f.name;
-            const email = c.email && c.email !== "N/A" ? c.email : "";
-            const phone = c.phone && c.phone !== "N/A" ? c.phone : "";
+            const head = f.name;
+            const email = candidates[idx]?.email || "";
+            const phone = "";
 
             return (
               <li key={f.id} className="dash-item">
@@ -555,18 +652,48 @@ const DashboardPage = ({ files }) => {
                     <div className="dash-left">
                       <span className={badgeClass(p)}>{p.toFixed(1)}%</span>
                       <span className="dash-name">{head}</span>
-                      <span className="dash-meta">
-                        {email && <span>{email}</span>}
-                        {email && phone && <span> · </span>}
-                        {phone && <span>{phone}</span>}
-                      </span>
+                      {email && <span className="dash-meta">{email}</span>}
                     </div>
                     <div className="dash-right">
                       <span className="dash-rank">#{idx + 1}</span>
+                      <select
+                        value={f.stage || "Applied"}
+                        onChange={(e) => updateStage(f.id, e.target.value)}
+                        className="stage-dropdown"
+                      >
+                        {stages.map((stage) => (
+                          <option key={stage} value={stage}>
+                            {stage}
+                          </option>
+                        ))}
+                      </select>
+                      <Button
+                        variant="secondary"
+                        onClick={() => {
+                          setSelectedResume({
+                            ...f,
+                            candidateId: f.candidateId,
+                          });
+                          setCurrentPage("interview");
+                        }}
+                      >
+                        Interview Assistant
+                      </Button>
                     </div>
                   </summary>
 
                   <div className="dash-body">
+                    {f.bias && !f.bias.bias_safe && (
+                      <div
+                        className="alert-warning"
+                        style={{ marginBottom: "1rem" }}
+                      >
+                        ⚠ Bias-sensitive information detected in resume.
+                        <br />
+                        Matching score was <strong>not</strong> affected.
+                      </div>
+                    )}
+
                     <div className="dash-block">
                       <h4>Reasoning</h4>
                       <p className="dash-text">{f.insights?.reasoning}</p>
@@ -649,424 +776,475 @@ const DashboardPage = ({ files }) => {
   );
 };
 
+const InterviewPage = ({
+  jobDescription,
+  resumeText,
+  candidateName,
+  onExit,
+  candidateId,
+}) => {
+  const [data, setData] = useState(null);
+  const interview = data?.interview || {};
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchInterviewInsights = async () => {
+      try {
+        setLoading(true);
+        const res = await api.get(`/candidates/${candidateId}/report`);
+
+        setData(res.data);
+      } catch (err) {
+        console.error("Failed to load interview assistant", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchInterviewInsights();
+  }, [candidateId]);
+
+  if (loading) {
+    return (
+      <div className="page-wrapper">
+        <div className="content-card">Generating interview report…</div>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="page-wrapper">
+        <div className="content-card">Failed to load interview report.</div>
+      </div>
+    );
+  }
+
+  const exportPDF = () => {
+    window.print();
+  };
+
+  return (
+    <div className="page-wrapper">
+      <div className="content-card" id="interview-report">
+        {/* TOP TITLE + EXPORT */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <h2 className="content-card-title">Interview Intelligence Report</h2>
+          <Button variant="secondary" onClick={exportPDF}>
+            Export PDF
+          </Button>
+        </div>
+
+        {/* ========================================================= */}
+        {/* ================= FORMAL REPORT HEADER ================== */}
+        {/* ========================================================= */}
+
+        <div className="formal-line" />
+
+        <div className="formal-title">Interview Report</div>
+
+        <div className="formal-meta">
+          <div>
+            <strong>Candidate:</strong> {candidateName}
+          </div>
+          <div>
+            <strong>Role:</strong> {jobDescription.title}
+          </div>
+          <div>
+            <strong>Generated:</strong>{" "}
+            {new Date().toLocaleDateString("en-GB", {
+              day: "2-digit",
+              month: "short",
+              year: "numeric",
+            })}
+          </div>
+        </div>
+
+        {/* ========================================================= */}
+        {/* ================= SECTION 1 ============================= */}
+        {/* ========================================================= */}
+
+        <div className="dash-block">
+          <h3 className="report-section-title">
+            SECTION 1 — Executive Summary
+          </h3>
+
+          <p>
+            <strong>Interview Strategy:</strong> {interview.interview_strategy}
+          </p>
+
+          <p>{interview.interview_objective}</p>
+
+          <div style={{ marginTop: "1rem" }}>
+            <strong>AI Confidence:</strong>{" "}
+            {interview.ai_confidence_meter?.score_percent ?? 0}% –{" "}
+            {interview.ai_confidence_meter?.confidence_level}
+          </div>
+
+          <div style={{ marginTop: "0.5rem" }}>
+            {interview.interview_summary}
+          </div>
+        </div>
+
+        {/* ========================================================= */}
+        {/* ================= SECTION 2 ============================= */}
+        {/* ========================================================= */}
+
+        <div className="dash-block">
+          <h3 className="report-section-title">
+            SECTION 2 — Risk & Fit Metrics
+          </h3>
+
+          <div className="metric-grid">
+            <div className="metric-card">
+              <div className="metric-value">
+                {interview.risk_assessment?.risk_level}
+              </div>
+              <div className="metric-label">Risk Level</div>
+            </div>
+
+            <div className="metric-card">
+              <div className="metric-value">
+                {interview.risk_assessment?.risk_score}
+              </div>
+              <div className="metric-label">Risk Score</div>
+            </div>
+
+            <div className="metric-card">
+              <div className="metric-value">
+                {interview.skill_analysis?.required_matched} /{" "}
+                {interview.skill_analysis?.required_total}
+              </div>
+              <div className="metric-label">Required Skills</div>
+            </div>
+
+            <div className="metric-card">
+              <div className="metric-value">
+                {interview.skill_analysis?.optional_matched} /{" "}
+                {interview.skill_analysis?.optional_total}
+              </div>
+              <div className="metric-label">Optional Skills</div>
+            </div>
+
+            <div className="metric-card">
+              <div className="metric-value">
+                {interview.experience_analysis?.candidate_years}
+              </div>
+              <div className="metric-label">Candidate Years</div>
+            </div>
+
+            <div className="metric-card">
+              <div className="metric-value">
+                {interview.experience_analysis?.required_years}
+              </div>
+              <div className="metric-label">Required Years</div>
+            </div>
+          </div>
+        </div>
+
+        {/* ========================================================= */}
+        {/* ================= SECTION 3 ============================= */}
+        {/* ========================================================= */}
+
+        <div className="dash-block">
+          <h3 className="report-section-title">SECTION 3 — Decision Signals</h3>
+
+          <p>
+            <strong>Readiness:</strong>{" "}
+            {interview.readiness_checklist?.readiness_level}
+          </p>
+
+          <p>
+            <strong>Hiring Signal:</strong>{" "}
+            {interview.readiness_checklist?.hiring_signal}
+          </p>
+
+          <h4 style={{ marginTop: "1rem" }}>Positive Signals</h4>
+          <ul>
+            {(interview.positive_signals || []).map((s, i) => (
+              <li key={i}>✅ {s}</li>
+            ))}
+          </ul>
+
+          <h4 style={{ marginTop: "1rem" }}>Risk Signals</h4>
+          <ul>
+            {(interview.risk_signals || []).map((s, i) => (
+              <li key={i}>⚠ {s}</li>
+            ))}
+          </ul>
+        </div>
+
+        {/* ========================================================= */}
+        {/* ================= SECTION 4 ============================= */}
+        {/* ========================================================= */}
+
+        <div className="dash-block">
+          <h3 className="report-section-title">
+            SECTION 4 — Interview Question Framework
+          </h3>
+
+          {interview.interview_questions.map((q, i) => (
+            <div
+              key={i}
+              className="sec-item"
+              style={{ marginBottom: "1.5rem" }}
+            >
+              <p>
+                <strong>Q{i + 1}:</strong> {q.question}
+              </p>
+
+              <h5>Strong Signals</h5>
+              <ul>
+                {q.strong_answer_signals.map((s, idx) => (
+                  <li key={idx}>✅ {s}</li>
+                ))}
+              </ul>
+
+              <h5>Weak Signals</h5>
+              <ul>
+                {q.weak_answer_signals.map((s, idx) => (
+                  <li key={idx}>❌ {s}</li>
+                ))}
+              </ul>
+
+              {q.follow_up && (
+                <div className="followup-container">
+                  <h5 className="followup-title">Adaptive Follow-Ups</h5>
+
+                  <div className="followup-grid">
+                    {q.follow_up.if_strong && (
+                      <div className="followup-card strong">
+                        <div className="followup-label">If Strong Answer</div>
+                        <div className="followup-question">
+                          ➜ {q.follow_up.if_strong.question}
+                        </div>
+                        <div className="followup-purpose">
+                          Purpose: {q.follow_up.if_strong.purpose}
+                        </div>
+                      </div>
+                    )}
+
+                    {q.follow_up.if_weak && (
+                      <div className="followup-card weak">
+                        <div className="followup-label">If Weak Answer</div>
+                        <div className="followup-question">
+                          ➜ {q.follow_up.if_weak.question}
+                        </div>
+                        <div className="followup-purpose">
+                          Purpose: {q.follow_up.if_weak.purpose}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* ========================================================= */}
+        {/* ================= SECTION 5 ============================= */}
+        {/* ========================================================= */}
+
+        {interview.interview_focus_areas?.length > 0 && (
+          <div className="dash-block">
+            <h3 className="report-section-title">
+              SECTION 5 — Priority Focus Areas
+            </h3>
+
+            <div className="focus-grid">
+              {interview.interview_focus_areas.map((area, i) => (
+                <div key={i} className="focus-card">
+                  <div className="focus-header">
+                    <span className="focus-title">{area.title}</span>
+                    <span
+                      className={`focus-priority ${area.priority.toLowerCase()}`}
+                    >
+                      {area.priority}
+                    </span>
+                  </div>
+                  <div className="focus-desc">{area.description}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* ================= SECTION 6 ============================= */}
+        {/* ========================================================= */}
+
+        <div className="dash-block">
+          <h3 className="report-section-title">
+            SECTION 6 — Final Recommendation
+          </h3>
+
+          <div className="recommendation-card">
+            <div className="recommendation-header">
+              {interview.final_recommendation?.final_recommendation}
+            </div>
+
+            <p>{interview.final_recommendation?.recommendation_note}</p>
+
+            <ul>
+              {(interview.final_recommendation?.interviewer_guidance || []).map(
+                (g, i) => (
+                  <li key={i}>{g}</li>
+                ),
+              )}
+            </ul>
+
+            <p style={{ marginTop: "1rem" }}>
+              {interview.final_recommendation?.bias_compliance}
+            </p>
+          </div>
+        </div>
+
+        {/* BOTTOM DIVIDER */}
+        <div className="formal-line" style={{ marginTop: "2rem" }} />
+
+        <div style={{ marginTop: "2rem" }}>
+          <Button variant="primary" onClick={onExit}>
+            Back to Dashboard
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const JobsPage = ({ setCurrentPage, setJobDescription, setFiles }) => {
+  const [jobs, setJobs] = useState([]);
+
+  useEffect(() => {
+    const loadJobs = async () => {
+      try {
+        const res = await api.get("/jobs");
+        setJobs(res.data);
+      } catch (err) {
+        console.error("Failed to load jobs", err);
+      }
+    };
+
+    loadJobs();
+  }, []);
+
+  const openJob = (job) => {
+    setJobDescription(job);
+    setFiles([]); // prevent cross-job resumes
+    setCurrentPage("dashboard");
+  };
+
+  return (
+    <div className="page-wrapper">
+      <div className="content-card">
+        <h2 className="content-card-title">Your Jobs</h2>
+
+        {jobs.length === 0 ? (
+          <p>No jobs created yet.</p>
+        ) : (
+          <ul className="dash-list">
+            {jobs.map((job) => (
+              <li key={job.id} className="dash-item">
+                <div className="dash-summary">
+                  <div className="dash-left">
+                    <span className="dash-name">{job.title}</span>
+                  </div>
+
+                  <div className="dash-right">
+                    <Button variant="secondary" onClick={() => openJob(job)}>
+                      Open Job
+                    </Button>
+
+                    <Button
+                      variant="danger"
+                      onClick={async () => {
+                        try {
+                          await api.delete(`/jobs/${job.id}`);
+                          setJobs((prev) =>
+                            prev.filter((j) => j.id !== job.id),
+                          );
+                        } catch (err) {
+                          console.error("Delete failed", err);
+                        }
+                      }}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <div style={{ marginTop: "20px" }}>
+          <Button
+            onClick={() => {
+              setJobDescription({
+                title: "",
+                description: "",
+              });
+
+              setFiles([]); // clear previous resumes
+
+              setCurrentPage("job");
+            }}
+          >
+            Create New Job
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // --- Main App Component ---
 
 const App = () => {
-  const [currentPage, setCurrentPage] = useState("job");
+  const [currentPage, setCurrentPage] = useState("jobs");
   const [jobDescription, setJobDescription] = useState({
     title: "",
     description: "",
   });
   const [files, setFiles] = useState([]);
+  const [selectedResume, setSelectedResume] = useState(null);
+  const [user, setUser] = useState(null);
+  const [authPage, setAuthPage] = useState("login");
 
-  const CSS_STYLES = `
-        /* Global Styles */
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+  useEffect(() => {
+    const wakeBackend = async () => {
+      try {
+        await fetch("https://nexthire-ai-1zdq.onrender.com/health", {
+          method: "GET",
+        });
+        console.log("Backend awake");
+      } catch (err) {
+        console.warn("Backend still waking up...");
+      }
+    };
 
-        body {
-            margin: 0;
-            font-family: 'Inter', sans-serif;
-            background-color: #f8f9fa; /* Soft off-white background */
-        }
+    wakeBackend();
+  }, []);
 
-        #root, .app-container {
-            min-height: 100vh;
-        }
+  useEffect(() => {
+    const token = localStorage.getItem("token");
 
-        /* Header and Navigation */
-        .app-header {
-            position: sticky;
-            top: 0;
-            z-index: 10;
-            background-color: #ffffff;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
+    if (token) {
+      setUser({ loggedIn: true });
+    }
+  }, []);
 
-        .header-content {
-            max-width: 1280px;
-            margin: 0 auto;
-            padding: 1rem 1.5rem;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-
-        @media (min-width: 768px) {
-            .header-content {
-                flex-direction: row;
-                justify-content: space-between;
-            }
-        }
-
-        .app-title {
-            font-size: 1.875rem; /* 3xl */
-            font-weight: 800; /* extabold */
-            color: #1f2937; /* gray-900 */
-            display: flex;
-            align-items: center;
-            margin-bottom: 1rem;
-        }
-
-        .app-title-icon {
-            color: #2563eb; /* blue-600 */
-            margin-right: 0.5rem;
-            width: 30px;
-            height: 30px;
-        }
-
-        .app-nav {
-            display: flex;
-            gap: 0.5rem;
-        }
-
-        .nav-item {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.75rem 1rem;
-            font-weight: 600;
-            border-radius: 0.75rem; /* rounded-xl */
-            transition: all 0.2s ease-in-out;
-            transform: translateY(0);
-            border: none;
-            cursor: pointer;
-        }
-
-        .nav-item:hover {
-            transform: translateY(-2px);
-        }
-
-        .nav-item-active {
-            background-color: #2563eb; /* blue-600 */
-            color: #ffffff;
-            box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.5), 0 4px 6px -2px rgba(37, 99, 235, 0.5); /* custom shadow */
-        }
-
-        .nav-item-inactive {
-            color: #374151; /* gray-700 */
-            background-color: transparent;
-        }
-
-        .nav-item-inactive:hover {
-            background-color: #f3f4f6; /* gray-100 */
-        }
-
-        /* Main Content and Cards */
-        .main-content {
-            max-width: 1280px;
-            margin: 0 auto;
-            padding: 1.5rem 1rem 2.5rem 1rem;
-        }
-
-        .page-wrapper {
-            padding: 1rem 0;
-            display: flex;
-            justify-content: center;
-        }
-
-        .content-card {
-            width: 100%;
-            max-width: 64rem; /* max-w-4xl */
-            background-color: #ffffff;
-            padding: 1.5rem;
-            border-radius: 0.75rem; /* rounded-xl */
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); /* shadow-2xl */
-            transition: box-shadow 0.5s ease-in-out;
-        }
-
-        .content-card:hover {
-            box-shadow: 0 35px 60px -15px rgba(0, 0, 0, 0.35); /* shadow-3xl equivalent */
-        }
-
-        @media (min-width: 768px) {
-            .content-card {
-                padding: 2.5rem;
-            }
-        }
-
-        .content-card-title {
-            font-size: 1.875rem; /* 3xl */
-            font-weight: 800;
-            color: #1f2937;
-            margin-bottom: 1.5rem;
-            padding-bottom: 0.75rem;
-            border-bottom: 1px solid #e5e7eb;
-        }
-
-        .content-card-subtitle {
-            color: #4b5563; /* gray-600 */
-            margin-bottom: 1.5rem;
-        }
-
-        /* Forms */
-        .form-label {
-            display: block;
-            font-size: 0.875rem;
-            font-weight: 500;
-            color: #374151; /* gray-700 */
-            margin-bottom: 0.5rem;
-        }
-
-        .form-input, .form-textarea {
-            width: 100%;
-            border: 1px solid #d1d5db; /* gray-300 */
-            border-radius: 0.5rem; /* rounded-lg */
-            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); /* shadow-sm */
-            padding: 0.75rem;
-            transition: all 0.15s ease-in-out;
-            resize: vertical;
-        }
-
-        .form-input:focus, .form-textarea:focus {
-            outline: none;
-            border-color: #3b82f6; /* blue-500 */
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.5);
-        }
-
-        /* Buttons */
-        .app-button {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
-            padding: 0.75rem 1rem;
-            font-weight: 600;
-            transition: all 0.3s ease-in-out;
-            transform: translateY(0);
-            border-radius: 0.75rem; /* rounded-xl */
-            border: none;
-            cursor: pointer;
-            margin: 1em;
-        }
-
-        .app-button:hover {
-            transform: translateY(-2px);
-        }
-
-        .app-button-primary {
-            background-color: #2563eb; /* blue-600 */
-            color: #ffffff;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 10px 15px -3px rgba(37, 99, 235, 0.5);
-        }
-
-        .app-button-primary:hover {
-            background-color: #1d4ed8; /* blue-700 */
-        }
-
-        .app-button-disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none !important;
-        }
-
-        /* CV Upload Page Specific Styles */
-
-        .cv-upload-container {
-            width: 100%;
-            max-width: 64rem;
-            display: flex;
-            flex-direction: column;
-            gap: 2rem;
-        }
-
-        .alert-warning {
-            background-color: #fffbeb; /* yellow-50 */
-            border-left: 4px solid #fbbf24; /* yellow-400 */
-            color: #92400e; /* yellow-800 */
-            padding: 1rem;
-            margin-bottom: 1.5rem;
-            border-radius: 0.5rem;
-            display: flex;
-            align-items: flex-start;
-            gap: 0.75rem;
-            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-        }
-
-        .alert-icon {
-            color: #f59e0b; /* yellow-500 */
-            flex-shrink: 0;
-            margin-top: 2px;
-        }
-
-        .alert-title {
-            font-size: 1.125rem;
-            font-weight: 600;
-        }
-
-        .alert-text {
-            font-size: 0.875rem;
-        }
-
-        .drag-drop-area {
-            display: block;
-            width: 90%;
-            padding: 3rem;
-            text-align: center;
-            border: 2px dashed;
-            border-radius: 0.75rem; /* rounded-xl */
-            transition: all 0.3s ease-in-out;
-            cursor: pointer;
-        }
-
-        .drag-drop-active {
-            border-color: #93c5fd; /* blue-300 */
-            color: #2563eb; /* blue-600 */
-        }
-
-        .drag-drop-active:hover {
-            border-color: #3b82f6; /* blue-500 */
-            background-color: #eff6ff; /* blue-50 */
-        }
-
-        .drag-drop-inactive {
-            border-color: #d1d5db; /* gray-300 */
-            color: #9ca3af; /* gray-400 */
-            background-color: #f9fafb; /* gray-50 */
-            cursor: not-allowed;
-        }
-
-        /* File List */
-        .file-list {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-        }
-
-        .file-list-item {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 1rem;
-            background-color: #f9fafb; /* gray-50 */
-            border: 1px solid #e5e7eb; /* gray-200 */
-            border-radius: 0.5rem;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-            transition: box-shadow 0.2s;
-        }
-
-        .file-list-item:hover {
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-
-        .file-info {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            min-width: 0;
-            flex: 1;
-        }
-
-        .file-icon {
-            color: #3b82f6; /* blue-500 */
-            flex-shrink: 0;
-        }
-
-        .file-name {
-            font-weight: 500;
-            color: #1f2937;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .file-size {
-            font-size: 0.875rem;
-            color: #6b7280; /* gray-500 */
-        }
-
-        .file-actions {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            flex-shrink: 0;
-        }
-
-        /* Status Badges */
-        .status-analyzed, .status-pending {
-            display: flex;
-            align-items: center;
-            font-weight: 600;
-            padding: 0.25rem 0.75rem;
-            border-radius: 9999px; /* full rounded */
-            font-size: 0.75rem;
-        }
-
-        .status-analyzed {
-            color: #059669; /* green-600 */
-            background-color: #d1fae5; /* green-100 */
-        }
-
-        .status-pending {
-            color: #4b5563; /* gray-600 */
-            background-color: #f3f4f6; /* gray-100 */
-        }
-
-        .remove-button {
-            padding: 0.5rem;
-            height: 40px;
-            width: 40px;
-            background-color: #fee2e2; /* red-100 */
-            color: #dc2626; /* red-600 */
-            box-shadow: none;
-            border-radius: 0.5rem;
-            transition: background-color 0.2s, transform 0.2s;
-        }
-
-        .remove-button:hover {
-            background-color: #fecaca; /* red-200 */
-            transform: translateY(-2px);
-        }
-
-        /* ✅ Fix alignment for Uploaded Files + Analyze All row */
-.file-list-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-/* ✅ Override the default title spacing for this row */
-.file-list-header .content-card-title {
-  margin-bottom: 0;
-  padding-bottom: 0;
-  border-bottom: none;
-}
-
-/* Score badge */
-.score-badge{display:inline-flex;align-items:center;justify-content:center;min-width:64px;padding:.25rem .5rem;border-radius:9999px;font-weight:700}
-.score-good{background:#dcfce7;color:#166534}
-.score-ok{background:#fef9c3;color:#854d0e}
-.score-low{background:#fee2e2;color:#7f1d1d}
-
-/* Dashboard */
-.dash-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1rem}
-.dash-item details{border:1px solid #e5e7eb;border-radius:.75rem;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.06)}
-.dash-summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem 1.25rem;cursor:pointer}
-.dash-summary::-webkit-details-marker{display:none}
-.dash-left{display:flex;align-items:center;gap:.75rem;min-width:0}
-.dash-name{font-weight:700;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:38ch}
-.dash-meta{color:#6b7280;font-size:.9rem}
-.dash-right .dash-rank{font-weight:800;color:#9ca3af}
-.dash-body{padding:1rem 1.25rem 1.25rem;border-top:1px solid #e5e7eb}
-.dash-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1rem}
-.dash-block h4{font-weight:700;margin:0 0 .35rem 0;color:#111827}
-.dash-text{color:#374151}
-.dash-muted{color:#6b7280}
-.chip-wrap{display:flex;flex-wrap:wrap;gap:.5rem}
-.chip{display:inline-flex;align-items:center;border-radius:9999px;padding:.25rem .6rem;font-size:.85rem}
-.chip-good{background:#e0f2fe;color:#075985}
-.chip-warn{background:#fff7ed;color:#9a3412}
-
-/* Sections */
-.sec-wrap{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem}
-.sec-item{border:1px solid #e5e7eb;border-radius:.75rem;padding:.75rem;background:#f9fafb}
-.sec-title{font-weight:700;color:#111827;margin-bottom:.25rem;text-transform:capitalize}
-.sec-text{color:#374151;font-size:.95rem;white-space:pre-wrap}
-
-
-    `;
+  const logout = () => {
+    localStorage.removeItem("token");
+    setUser(null);
+  };
 
   const renderPage = useMemo(() => {
     switch (currentPage) {
@@ -1076,6 +1254,14 @@ const App = () => {
             jobDescription={jobDescription}
             setJobDescription={setJobDescription}
             setCurrentPage={setCurrentPage}
+          />
+        );
+      case "jobs":
+        return (
+          <JobsPage
+            setCurrentPage={setCurrentPage}
+            setJobDescription={setJobDescription}
+            setFiles={setFiles}
           />
         );
       case "cvs":
@@ -1088,7 +1274,29 @@ const App = () => {
           />
         );
       case "dashboard":
-        return <DashboardPage files={files} />;
+        return (
+          <DashboardPage
+            files={files}
+            jobDescription={jobDescription}
+            setSelectedResume={setSelectedResume}
+            setCurrentPage={setCurrentPage}
+          />
+        );
+
+      case "interview":
+        return (
+          <InterviewPage
+            jobDescription={jobDescription}
+            resumeText={selectedResume?.rawText || ""}
+            candidateName={
+              selectedResume?.insights?.contact?.name ||
+              selectedResume?.name ||
+              "Candidate"
+            }
+            candidateId={selectedResume?.candidateId}
+            onExit={() => setCurrentPage("dashboard")}
+          />
+        );
 
       default:
         return (
@@ -1116,10 +1324,18 @@ const App = () => {
     );
   };
 
+  // AUTH ROUTING
+  if (!user) {
+    if (authPage === "login") {
+      return <LoginPage setUser={setUser} setPage={setAuthPage} />;
+    }
+
+    return <RegisterPage setPage={setAuthPage} />;
+  }
   return (
     <div className="app-container">
       {}
-      <style dangerouslySetInnerHTML={{ __html: CSS_STYLES }} /> {}{" "}
+      {}{" "}
       <header className="app-header">
         {" "}
         <div className="header-content">
@@ -1130,10 +1346,14 @@ const App = () => {
           </h1>{" "}
           <nav className="app-nav">
             {" "}
+            <NavItem page="jobs" label="Jobs" icon={LayoutList} />
             <NavItem page="job" label="Define Job" icon={FileText} />
             <NavItem page="cvs" label="Upload CVs" icon={Upload} />{" "}
             <NavItem page="dashboard" label="Dashboard" icon={LayoutList} />
-          </nav>{" "}
+            <Button variant="secondary" onClick={logout}>
+              Logout
+            </Button>
+          </nav>
         </div>{" "}
       </header>
       {} <main className="main-content">{renderPage}</main>{" "}

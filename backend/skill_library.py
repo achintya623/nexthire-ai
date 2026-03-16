@@ -29,10 +29,12 @@ DATA_SCIENCE_SKILLS = [
 
 MARKETING_SKILLS = [
     "seo", "sem", "ppc", "google ads", "bing ads", "meta ads",
-    "content strategy", "copywriting", "email marketing", "marketing automation",
-    "hubspot", "mailchimp", "crm", "google analytics", "ga4", "ahrefs", "semrush", "social media marketing",
-    "brand management", "product marketing",
+    "content strategy", "copywriting", "email marketing",
+    "marketing automation", "hubspot", "mailchimp", "crm",
+    "google analytics", "analytics", "ga4",
+    "social media marketing", "brand management", "product marketing",
 ]
+
 
 FINANCE_SKILLS = [
     "financial modeling", "fp&a", "valuation", "equity research",
@@ -70,6 +72,17 @@ GENERAL_SKILLS = [
     "project management", "scrum", "agile", "kanban", "stakeholder management",
     "documentation", "communication", "leadership", "time management", "problem solving",
 ]
+
+SKILL_ALIASES = {
+    "google analytics": {"analytics", "ga", "ga4"},
+    "sem": {"google ads", "paid search"},
+    "seo": {"search engine optimization"},
+    "rest api": {"rest apis", "restapi", "restapis"},
+    "ci/cd": {"cicd", "ci cd", "continuous integration"},
+    "javascript": {"js"},
+    "typescript": {"ts"},
+}
+
 
 MASTER_SKILL_LIBRARY = sorted(set(
     TECH_SKILLS + DATA_SCIENCE_SKILLS + MARKETING_SKILLS + FINANCE_SKILLS +
