@@ -1,7 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-const Port = process.env.PORT;
+const port = process.env.PORT;
 
 const authRoutes = require("./routes/authRoutes");
 const jobRoutes = require("./routes/jobRoutes");
@@ -16,6 +16,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/jobs", jobRoutes);
 app.use("/api/candidates", candidateRoutes);
 
-app.listen(Port, () => {
-  console.log(`Server running on port ${Port}`);
+// Boots the API server after middleware and routes are mounted.
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
 });

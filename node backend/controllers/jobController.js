@@ -1,5 +1,6 @@
 const pool = require("../db");
 
+// Creates a new job role for the authenticated user.
 exports.createJob = async (req, res) => {
   try {
     const { title, description } = req.body;
@@ -23,6 +24,7 @@ exports.createJob = async (req, res) => {
   }
 };
 
+// Fetches all jobs created by the authenticated user.
 exports.getJobs = async (req, res) => {
   try {
     const jobs = await pool.query(
@@ -40,6 +42,7 @@ exports.getJobs = async (req, res) => {
   }
 };
 
+// Deletes a job that belongs to the authenticated user.
 exports.deleteJob = async (req, res) => {
   try {
     const { id } = req.params;

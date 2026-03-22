@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 
+// Validates Bearer token and injects decoded user data into req.user.
 module.exports = (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;

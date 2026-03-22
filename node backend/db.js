@@ -1,5 +1,6 @@
 const { Pool } = require("pg");
 
+// Shares a single PostgreSQL connection pool across controllers.
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 pool
