@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import api from "../api/api";
 import styles from "../styles/AuthPages.module.css";
 
+// Handles recruiter login, session persistence, and post-login navigation.
 export default function LoginPage({ setUser, showAlert }) {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
@@ -83,7 +84,7 @@ export default function LoginPage({ setUser, showAlert }) {
             <input
               className={styles.input}
               type="password"
-              placeholder="••••••••"
+              placeholder="********"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -93,7 +94,7 @@ export default function LoginPage({ setUser, showAlert }) {
             </Link>
           </div>
           <button className={styles.submitBtn} type="submit" disabled={loading}>
-            {loading ? "Signing in…" : "Sign In →"}
+            {loading ? "Signing in..." : "Sign In ->"}
           </button>
         </form>
 

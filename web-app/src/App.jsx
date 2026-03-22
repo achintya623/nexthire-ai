@@ -14,11 +14,13 @@ import JobMatchApp from "./pages/JobMatchApp";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 
+// Protects private routes and redirects unauthenticated users to login.
 function RequireAuth({ children }) {
   const token = localStorage.getItem("token");
   return token ? children : <Navigate to="/login" replace />;
 }
 
+// Normalizes hash-based redirects to the register route.
 function RegisterRoute() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -32,6 +34,7 @@ function RegisterRoute() {
   return <RegisterPage />;
 }
 
+// Defines the top-level application routes.
 export default function App() {
   return (
     <BrowserRouter>

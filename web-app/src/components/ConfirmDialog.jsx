@@ -1,6 +1,7 @@
 import { AlertTriangle } from "lucide-react";
 import styles from "../styles/ConfirmDialog.module.css";
 
+// Renders a reusable confirm/cancel dialog for destructive and risky actions.
 export default function ConfirmDialog({
   open,
   title = "Confirm Action",

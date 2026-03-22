@@ -7,6 +7,7 @@ const iconByType = {
   info: Info,
 };
 
+// Renders a transient, themed notification popup.
 export default function AlertPopup({ open, type, title, message, onClose }) {
   if (!open) return null;
 

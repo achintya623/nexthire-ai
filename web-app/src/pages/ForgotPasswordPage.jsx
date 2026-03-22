@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import api from "../api/api";
 import styles from "../styles/AuthPages.module.css";
 
+// Starts the password reset flow and shows the generated reset URL in dev.
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
@@ -47,7 +48,7 @@ export default function ForgotPasswordPage() {
 
         <h1 className={styles.title}>Forgot password</h1>
         <p className={styles.subtitle}>
-          Enter your registered email and we’ll send a reset link.
+          Enter your registered email and we will generate a reset link.
         </p>
 
         {error && <div className={styles.error}>{error}</div>}

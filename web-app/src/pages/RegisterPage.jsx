@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import api from "../api/api";
 import styles from "../styles/AuthPages.module.css";
 
+// Handles new user registration and redirects to login on success.
 export default function RegisterPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -53,7 +54,7 @@ export default function RegisterPage() {
         </Link>
 
         <h1 className={styles.title}>Create your account</h1>
-        <p className={styles.subtitle}>Start screening smarter — free forever</p>
+        <p className={styles.subtitle}>Start screening smarter - free forever</p>
 
         {error && <div className={styles.error}>{error}</div>}
 
@@ -93,7 +94,7 @@ export default function RegisterPage() {
             />
           </div>
           <button className={styles.submitBtn} type="submit" disabled={loading}>
-            {loading ? "Creating account…" : "Create Account →"}
+            {loading ? "Creating account..." : "Create Account ->"}
           </button>
         </form>
 

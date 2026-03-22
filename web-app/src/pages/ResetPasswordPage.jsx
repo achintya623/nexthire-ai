@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import api from "../api/api";
 import styles from "../styles/AuthPages.module.css";
 
+// Completes password reset using a token from the reset link.
 export default function ResetPasswordPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();

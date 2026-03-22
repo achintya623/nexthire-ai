@@ -15,18 +15,12 @@ import {
   X,
 } from "lucide-react";
 import api from "../api/api";
-const pdfjsLib = await import("pdfjs-dist/build/pdf");
-pdfjsLib.GlobalWorkerOptions.workerSrc =
-  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js";
 import LoginPage from "./LoginPage";
 import RegisterPage from "./RegisterPage";
 import AlertPopup from "../components/AlertPopup";
 import ConfirmDialog from "../components/ConfirmDialog";
 
-// const API_BASE_URL = "https://nexthire-ai-1zdq.onrender.com";
-// const API_BASE_URL = "http://127.0.0.1:8000";
-// const API_BASE_URL = "http://localhost:5000/api";
-
+// Renders a reusable themed button used across the workspace UI.
 const Button = ({
   children,
   onClick,
@@ -60,25 +54,22 @@ const Button = ({
   );
 };
 
+// Converts a fractional score (0-1) to a clamped percentage.
 const toPct = (x) => Math.max(0, Math.min(100, (Number(x) || 0) * 100));
+// Chooses a score badge style based on score severity.
 const badgeClass = (p) =>
   p >= 80
     ? "score-badge score-good"
     : p >= 60
       ? "score-badge score-ok"
       : "score-badge score-low";
-const toInt = (val) => {
-  const n = parseInt(val, 10);
-  return Number.isFinite(n) ? n : null;
-};
+// Safely casts unknown values to a finite number.
 const toNum = (val, fallback = 0) => {
   const n = Number(val);
   return Number.isFinite(n) ? n : fallback;
 };
 
-// --- Page Components ---
-
-// FIX: Added setCurrentPage to the destructured props
+// Collects and saves job title + description before resume upload.
 const JobDescriptionPage = ({
   jobDescription,
   setJobDescription,
@@ -163,6 +154,7 @@ const JobDescriptionPage = ({
   );
 };
 
+// Handles file upload, PDF parsing, and candidate analysis actions.
 const CVUploadPage = ({ files, setFiles, jobDescription, setCurrentPage }) => {
   const isJobDescriptionReady =
     !!jobDescription.title && !!jobDescription.description;
@@ -200,6 +192,7 @@ const CVUploadPage = ({ files, setFiles, jobDescription, setCurrentPage }) => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
+  // Shows file analysis status badge in the upload list.
   const StatusDisplay = ({ status, isAnalyzed }) => {
     if (isAnalyzed) {
       return (
@@ -215,9 +208,7 @@ const CVUploadPage = ({ files, setFiles, jobDescription, setCurrentPage }) => {
       </div>
     );
   };
-
-  // 🧠 NEW: analyze resume by calling Flask API
-  // 🔍 Analyze resume using Flask backend
+  // Runs end-to-end analysis for one uploaded resume.
   const analyzeResume = async (fileObj) => {
     try {
       setFiles((prev) =>
@@ -225,23 +216,16 @@ const CVUploadPage = ({ files, setFiles, jobDescription, setCurrentPage }) => {
           f.id === fileObj.id ? { ...f, status: "Reading file..." } : f,
         ),
       );
-
-      // Convert PDF → text
       const text = await readFileAsText(fileObj.content);
 
       if (!text || text.trim().length < 50) {
         throw new Error("Extracted resume text is empty or too short");
       }
-
-      // Step 1: Send to /parse
       setFiles((prev) =>
         prev.map((f) =>
           f.id === fileObj.id ? { ...f, status: "Parsing resume..." } : f,
         ),
       );
-
-      // Step 2: Send parsed text + JD to /match
-      // Step 2: Send parsed resume + JD to /match (BERT model)
       setFiles((prev) =>
         prev.map((f) =>
           f.id === fileObj.id
@@ -249,7 +233,6 @@ const CVUploadPage = ({ files, setFiles, jobDescription, setCurrentPage }) => {
             : f,
         ),
       );
-      // Step 1 — Create candidate in DB
       const candidateRes = await api.post("/candidates", {
         job_id: jobDescription.id, // for now assume single job
         name: fileObj.name,
@@ -258,62 +241,32 @@ const CVUploadPage = ({ files, setFiles, jobDescription, setCurrentPage }) => {
       });
 
       const candidateId = candidateRes.data.id;
-
-      // Step 2 — Run AI analysis
       const analysisRes = await api.post(`/candidates/${candidateId}/analyze`);
 
       const report = analysisRes.data;
 
       const bias = report.bias || {};
-
-      // hybrid score (0–1)
       const hybridScore = Number(report.screening?.match?.final_score ?? 0);
-
-      // skills overlap
       const matchedSkills = report.positive_signals || [];
 
       const missingSkills = report.readiness_checklist?.gaps || [];
-
-      // experience match (A + C)
       const expMatch =
         report.experience_analysis?.candidate_years >=
         report.experience_analysis?.required_years
           ? "Meets/Exceeds"
           : "Below";
-
-      // role match (D)
       const roleMatch =
         report.skill_analysis?.required_matched > 0
           ? "Partially aligned"
           : "Unclear";
-
-      // short reasoning (Detail level 2)
       const pct = Math.round(hybridScore * 100);
 
       const reasoning = `Score ${pct}% based on semantic similarity, skill overlap, role alignment, and seniority match.`;
-
-      // Step 3: Send results to /bias_check (optional bias model)
       setFiles((prev) =>
         prev.map((f) =>
           f.id === fileObj.id ? { ...f, status: "Checking bias model..." } : f,
         ),
       );
-
-      // let biasCheck = null;
-      // try {
-      //   const biasRes = await axios.post(`${API_BASE_URL}/bias_check`, {
-      //     resume_text: text,
-      //     jd_text: jobDescription.description,
-      //   });
-      //   biasCheck = biasRes.data.bias_score ?? "N/A";
-      // } catch (err) {
-      //   console.warn("Bias check failed:", err);
-      // }
-
-      // Step 4: Update UI
-      // Default fallback reasoning if required fields missing
-
-      // ✅ Ensure insights always exist — never undefined
       const contact = {};
       const sections = {};
       setFiles((prev) =>
@@ -321,7 +274,7 @@ const CVUploadPage = ({ files, setFiles, jobDescription, setCurrentPage }) => {
           f.id === fileObj.id
             ? {
                 ...f,
-                rawText: text, // ✅ ADD THIS
+                rawText: text,
                 candidateId: candidateId,
                 status: "Done",
                 isAnalyzed: true,
@@ -359,18 +312,14 @@ const CVUploadPage = ({ files, setFiles, jobDescription, setCurrentPage }) => {
 
       setFiles((prev) =>
         prev.map((f) =>
-          f.id === fileObj.id ? { ...f, status: `❌ ${message}` } : f,
+          f.id === fileObj.id ? { ...f, status: `Error: ${message}` } : f,
         ),
       );
     }
   };
-
-  // 🧩 Helper: convert PDF to text using pdf.js (client-side)
-  // 📄 Read PDF as plain text using pdf.js
+  // Extracts plain text from a PDF file in the browser.
   const readFileAsText = async (file) => {
     const pdfjsLib = await import("pdfjs-dist/build/pdf");
-
-    // ✅ Vite-safe worker resolution
     pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
       "pdfjs-dist/build/pdf.worker.min.js",
       import.meta.url,
@@ -393,6 +342,7 @@ const CVUploadPage = ({ files, setFiles, jobDescription, setCurrentPage }) => {
     return text;
   };
 
+  // Processes every pending resume and opens the dashboard after sorting.
   const analyzeAllResumes = async () => {
     for (const file of files) {
       if (!file.isAnalyzed) {
@@ -514,6 +464,7 @@ const CVUploadPage = ({ files, setFiles, jobDescription, setCurrentPage }) => {
   );
 };
 
+// Shows ranked candidates, score summary, and stage management controls.
 const DashboardPage = ({
   files,
   setSelectedResume,
@@ -788,6 +739,7 @@ const DashboardPage = ({
   );
 };
 
+// Displays detailed screening and interview intelligence for one candidate.
 const InterviewPage = ({
   jobDescription,
   resumeText,
@@ -1131,6 +1083,7 @@ const InterviewPage = ({
   );
 };
 
+// Lists all jobs for the user and supports open/delete actions.
 const JobsPage = ({ setCurrentPage, setJobDescription, setFiles }) => {
   const [jobs, setJobs] = useState([]);
   const [jobToDelete, setJobToDelete] = useState(null);
@@ -1231,6 +1184,7 @@ const JobsPage = ({ setCurrentPage, setJobDescription, setFiles }) => {
 
 // --- Main App Component ---
 
+// Main authenticated workspace shell with fixed sidebar and top bar.
 const App = ({ initialAuthPage = "login" }) => {
   const navigate = useNavigate();
   const [currentPage, setCurrentPage] = useState("jobs");
@@ -1253,6 +1207,7 @@ const App = ({ initialAuthPage = "login" }) => {
   });
   const popupTimerRef = useRef(null);
 
+  // Dismisses popup and clears any running dismiss timer.
   const closePopup = useCallback(() => {
     if (popupTimerRef.current) {
       clearTimeout(popupTimerRef.current);
@@ -1261,6 +1216,7 @@ const App = ({ initialAuthPage = "login" }) => {
     setPopup((prev) => ({ ...prev, open: false }));
   }, []);
 
+  // Shows a timed in-app alert message.
   const showAlert = useCallback(
     ({ type = "info", title = "Notification", message = "", duration = 3000 }) => {
       if (popupTimerRef.current) {
@@ -1276,6 +1232,7 @@ const App = ({ initialAuthPage = "login" }) => {
   );
 
   useEffect(() => {
+    // Triggers one lightweight request so cold-started backend wakes up early.
     const wakeBackend = async () => {
       try {
         await fetch("https://nexthire-ai-1zdq.onrender.com/health", {
@@ -1300,6 +1257,7 @@ const App = ({ initialAuthPage = "login" }) => {
   );
 
   useEffect(() => {
+    // Loads the current user profile from API and falls back to cached local data.
     const token = localStorage.getItem("token");
 
     if (!token) return;
@@ -1343,6 +1301,7 @@ const App = ({ initialAuthPage = "login" }) => {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
+  // Logs out and redirects the user to the login screen.
   const logout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("nh_user");
@@ -1350,6 +1309,7 @@ const App = ({ initialAuthPage = "login" }) => {
     navigate("/login");
   };
 
+  // Navigates to landing page and clears auth state.
   const goHomeAndLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("nh_user");
@@ -1392,6 +1352,7 @@ const App = ({ initialAuthPage = "login" }) => {
     }
   }, [user]);
 
+  // Renders the active content page inside the workspace shell.
   const renderPage = useMemo(() => {
     switch (currentPage) {
       case "job":
@@ -1455,6 +1416,7 @@ const App = ({ initialAuthPage = "login" }) => {
     }
   }, [currentPage, jobDescription, files]);
 
+  // Renders one sidebar navigation item.
   const SidebarItem = ({ page, label, icon: Icon }) => {
     const isActive = currentPage === page || (page === "dashboard" && currentPage === "interview");
     const activeClass = "workspace-nav-item-active";
@@ -1640,3 +1602,11 @@ const App = ({ initialAuthPage = "login" }) => {
 };
 
 export default App;
+
+
+
+
+
+
+
+
