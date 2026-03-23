@@ -54,7 +54,10 @@ def load_models():
 
 
 logger.info("Booting app – loading models once at startup")
-load_models()
+try:
+    load_models()
+except Exception as e:
+    logger.error(f"Model loading failed: {e}")
 
 
 # ----------------- Health -----------------
@@ -294,4 +297,4 @@ def interview_assistant():
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
-    app.run(port=port, debug=False)
+    app.run(host="0.0.0.0", port=port, debug=False)
