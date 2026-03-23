@@ -19,7 +19,7 @@ CREATE TABLE candidates (
   name TEXT,
   email TEXT,
   resume_text TEXT,
-  ai_score INTEGER,
+  ai_score DOUBLE PRECISION,
   risk_level TEXT,
   recommendation TEXT,
   stage TEXT DEFAULT 'Applied',
