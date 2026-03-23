@@ -56,7 +56,7 @@ FRONTEND_URL=http://localhost:5173
 
 ---
 
-### Frontend (`frontend/.env`)
+### Frontend (`web-app/.env`)
 
 ```env
 VITE_API_BASE_URL=http://localhost:5000/api
@@ -64,7 +64,7 @@ VITE_API_BASE_URL=http://localhost:5000/api
 
 ---
 
-### AI Backend (`ai-backend/.env`)
+### AI Backend (`backend/.env`)
 
 ```env
 PORT=8000
@@ -93,7 +93,7 @@ psql -U postgres -d nexthire -f database/schema.sql
 ### 1. Start AI Backend
 
 ```bash
-cd ai-backend
+cd backend
 python -m venv .venv
 .\.venv\Scripts\Activate
 pip install -r requirements.txt
@@ -115,7 +115,7 @@ npm start
 ### 3. Start Frontend
 
 ```bash
-cd frontend
+cd web-app
 npm install
 npm run dev
 ```
