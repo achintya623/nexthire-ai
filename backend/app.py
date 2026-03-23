@@ -3,6 +3,7 @@ from flask_cors import CORS
 import logging
 import os
 from dotenv import load_dotenv
+import threading
 
 load_dotenv()
 
@@ -54,10 +55,14 @@ def load_models():
 
 
 logger.info("Booting app – loading models once at startup")
-try:
-    load_models()
-except Exception as e:
-    logger.error(f"Model loading failed: {e}")
+
+def load_models_background():
+    try:
+        load_models()
+    except Exception as e:
+        logger.error(f"Model loading failed: {e}")
+
+threading.Thread(target=load_models_background).start()
 
 
 # ----------------- Health -----------------
