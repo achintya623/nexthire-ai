@@ -13,4 +13,8 @@ pool
   .then(() => console.log("PostgreSQL connected"))
   .catch((err) => console.error("DB connection error", err));
 
+pool.on("error", (err) => {
+  console.error("Unexpected DB error", err);
+});
+
 module.exports = pool;
