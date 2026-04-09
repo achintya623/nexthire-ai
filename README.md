@@ -22,6 +22,64 @@ AI-powered recruitment intelligence platform that automates resume screening and
 - **Database:** PostgreSQL
 
 ---
+## 📸 Screenshots
+
+---
+
+### 🌐 Landing Pages
+
+![Landing1](https://github.com/Harshita-Paliwal/NextHireAI/blob/b567e34eed60a0ee099814aac8bfb064121cf44f/LandingPg1.png?raw=true)
+
+![Landing2](https://github.com/Harshita-Paliwal/NextHireAI/blob/b567e34eed60a0ee099814aac8bfb064121cf44f/LandingPg2.png?raw=true)
+
+![Landing3](https://github.com/Harshita-Paliwal/NextHireAI/blob/b567e34eed60a0ee099814aac8bfb064121cf44f/LandingPg3.png?raw=true)
+
+![Landing4](https://github.com/Harshita-Paliwal/NextHireAI/blob/b567e34eed60a0ee099814aac8bfb064121cf44f/LandingPg4.png?raw=true)
+
+![Landing5](https://github.com/Harshita-Paliwal/NextHireAI/blob/b567e34eed60a0ee099814aac8bfb064121cf44f/LandingPg5.png?raw=true)
+
+![Landing6](https://github.com/Harshita-Paliwal/NextHireAI/blob/b567e34eed60a0ee099814aac8bfb064121cf44f/LandingPg6.png?raw=true)
+
+---
+
+### 🔐 Authentication
+
+![Login](https://github.com/Harshita-Paliwal/NextHireAI/blob/b567e34eed60a0ee099814aac8bfb064121cf44f/Login.png?raw=true)
+
+![Register](https://github.com/Harshita-Paliwal/NextHireAI/blob/b567e34eed60a0ee099814aac8bfb064121cf44f/Register.png?raw=true)
+
+---
+
+### 🏠 Home
+
+![Home](https://github.com/Harshita-Paliwal/NextHireAI/blob/b567e34eed60a0ee099814aac8bfb064121cf44f/Home.png?raw=true)
+
+---
+
+### 📤 Resume Upload
+
+![Uploads](https://github.com/Harshita-Paliwal/NextHireAI/blob/b567e34eed60a0ee099814aac8bfb064121cf44f/Uploads.png?raw=true)
+
+---
+
+### 📝 Job Description
+
+![JobDefine](https://github.com/Harshita-Paliwal/NextHireAI/blob/b567e34eed60a0ee099814aac8bfb064121cf44f/Jobdefine.png?raw=true)
+
+---
+
+### 📊 Dashboard
+
+![Dashboard](https://github.com/Harshita-Paliwal/NextHireAI/blob/b567e34eed60a0ee099814aac8bfb064121cf44f/Dashboard.png?raw=true)
+
+---
+
+### 🤖 Interview Analysis
+
+![Interview1](https://github.com/Harshita-Paliwal/NextHireAI/blob/b567e34eed60a0ee099814aac8bfb064121cf44f/Interview1.png?raw=true)
+
+![Interview2](https://github.com/Harshita-Paliwal/NextHireAI/blob/b567e34eed60a0ee099814aac8bfb064121cf44f/Interview2.png?raw=true)
+---
 
 ## 🧩 Architecture
 
@@ -139,9 +197,5 @@ npm run dev
 
 ---
 
-## 👥 Contributors
 
-- Achintya Sharma
-- Harshita
 
----
